@@ -26,6 +26,7 @@ public class ParseHtmlLinks {
     // ******************************************************************************************
 
     private String urlToParse;
+    private String baseRelativeURL;
     private ArrayList<String> htmlLinks;
 
     // ******************************************************************************************
@@ -33,7 +34,7 @@ public class ParseHtmlLinks {
     // ******************************************************************************************
 
     public static void main(String args[]) {
-        String urlToParse = ("http://www.dcs.bbk.ac.uk/~martin/sewn/ls3/testpage.html");
+        String urlToParse = ("http://www.dcs.bbk.ac.uk/~martin/sewn/ls3/index.html");
         ParseHtmlLinks phl = new ParseHtmlLinks(urlToParse);
         System.out.println("Parsing links from: " + phl.getUrlToParse());
         phl.parseHtmlLinks();
@@ -47,10 +48,11 @@ public class ParseHtmlLinks {
 
     public ParseHtmlLinks(String urlToParse) {
         this.urlToParse = urlToParse;
+        this.baseRelativeURL = baseRelativeURLToParse(urlToParse);
         this.htmlLinks = new ArrayList<String>();
     }
 
-    // ******************************************************************************************
+	// ******************************************************************************************
     // ** ACCESSOR AND MUTATOR METHODS.                                                        **
     // ******************************************************************************************
 
@@ -58,9 +60,9 @@ public class ParseHtmlLinks {
         return urlToParse;
     }
 
-    public void setUtlToParse(String urlToParse) {
-        this.urlToParse = urlToParse;
-    }
+	public String getBaseRelativeURL() {
+		return baseRelativeURL;
+	}
 
     public ArrayList<String> getHtmlLinks() {
         return htmlLinks;
@@ -74,12 +76,68 @@ public class ParseHtmlLinks {
     // ** HELPER METHODS.                                                                      **
     // ******************************************************************************************
 
+    // Checks format of 'urlToParse' and returns version suitable for use as a base relative URL 
+    private String baseRelativeURLToParse(String originalURL) {
+    	String baseRelativeURL = originalURL;
+    	char[] charactersInURL;
+    	charactersInURL = originalURL.toCharArray();
+    	int loopCounter = charactersInURL.length-1;
+    	boolean finishedChecks = false;
+    	boolean dotEncountered = false;
+    	
+    	do
+    	{
+    		if (charactersInURL[loopCounter] == '/')
+    		{
+    			// checks if last character in array is a slash
+    			if (loopCounter == charactersInURL.length-1)
+    			{
+    				// then 'originalURL' is already base relative path
+    				baseRelativeURL = originalURL;
+    				finishedChecks = true;
+    			}
+    			else
+    			{
+    				// if dot not yet encountered, then 'originalURL' was base relative path, just needing '/'
+    				if (!dotEncountered)
+    				{
+        				baseRelativeURL = originalURL + "/";
+        				finishedChecks = true;
+    				}
+    				else
+    				{
+    					//'originalURL' was a full filepath - so need to perform sum to get correct base URL
+        				baseRelativeURL = originalURL.substring(0, charactersInURL.length-loopCounter);
+    				}
+    			}
+    		}
+
+    		if (charactersInURL[loopCounter] == '.')
+    		{
+    			dotEncountered=true;
+    		}
+    		
+    		loopCounter--;
+    	} while (loopCounter>0 && !finishedChecks);
+    	
+		return baseRelativeURL;
+	}
+
+    // Checks the format of a URL, and returns full version if it is relative
+    private String returnFullURL(String htmlLink) {
+    	if (!htmlLink.toLowerCase().contains("://"))
+    	{
+    		htmlLink = this.getBaseRelativeURL() + htmlLink;
+    	}
+		return htmlLink;
+	}
+    
     // Adds a HTML link found in the webpage to collection htmlLinks.
     public void addHtmlLink(String htmlLink) {
-        this.htmlLinks.add(htmlLink);
+        this.htmlLinks.add(returnFullURL(htmlLink));
     }
 
-    // Lists the links in the webpage.
+	// Lists the links in the webpage.
     public void listHtmlLinks() {
         for (int i = 0; i < this.getHtmlLinks().size(); i++) {
             System.out.println((i + 1) + ": " + this.getHtmlLinks().get(i));
