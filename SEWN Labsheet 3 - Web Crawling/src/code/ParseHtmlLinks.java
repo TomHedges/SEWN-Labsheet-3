@@ -3,11 +3,11 @@ package code;
 
 // With thanks to: http://www.javaalmanac.com/egs/javax.swing.text.html/GetLinks.html.
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.io.Reader;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -39,6 +39,9 @@ public class ParseHtmlLinks {
 	private ArrayList<String> disallowedURLs;
 	
 	private int arrayPointerToLinkCurrentlyBeingParsed;
+
+	private String textForCrawlFile;
+	private String textForResultsFile;
 	
 	final static String urlToIgnore = "DO NOT USE THIS LINK FOR ANYTHING";
 
@@ -53,48 +56,12 @@ public class ParseHtmlLinks {
 		String urlToParse = ("http://www.dcs.bbk.ac.uk/~martin/sewn/ls3/index.html");
 		ParseHtmlLinks phl = new ParseHtmlLinks(urlToParse);
 
-		//READ ROBOTS.TXT file
-		try {
-			//URL url;
-			//url = new URL(phl.getBaseRelativeURL() + "robots.txt");
-			//Scanner s = new Scanner(url.openStream());
-
-			//URL url = new URI(phl.getBaseRelativeURL() + "robots.txt").toURL();
-			//URLConnection conn = url.openConnection();
-			//Reader rd = new InputStreamReader(conn.getInputStream());
-			//Scanner s = new Scanner(rd).
-
-			URL url = new URI(phl.getBaseRelativeURL() + "robots.txt").toURL();
-			//Reader rd = new InputStreamReader(conn.getInputStream());
-			InputStream in = url.openStream();
-			Scanner s = new Scanner(in);//.useDelimiter("\\A");
-
-			while (s.hasNextLine()) {
-				String test = s.nextLine();
-				if (test.contains("/")) {
-					test = test.substring(test.indexOf("/")+1);
-					phl.disallowedURLs.add(phl.getBaseRelativeURL() + test);
-				}
-			}
-
-//		TEST	url = new URI(phl.getBaseRelativeURL() + "robots.txt").toURL();
-		} catch (MalformedURLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			System.out.println(e);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			System.out.println(e);
-		} catch (URISyntaxException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 		int loopCounter = 1;
 		do
 		{
 			String nextURL = phl.getUrlToParse(loopCounter);
 			System.out.println(loopCounter + ".) Parsing links from: " + nextURL);
+			phl.setTextForCrawlFile(phl.getTextForCrawlFile() + "<" + nextURL + ">" + System.getProperty("line.separator"));
 			phl.setCurrentRelativeURL(nextURL);
 			phl.parseHtmlLinks(nextURL);
 			System.out.println("Links found: ");
@@ -104,7 +71,8 @@ public class ParseHtmlLinks {
 		} while (phl.getUrlsToParseSize()>=loopCounter);
 		
 		System.out.println();
-		
+
+		phl.outputTextFile("crawl.txt", phl.getTextForCrawlFile());
 		phl.listVisitedPagesPerVisitedURL();
 	}
 
@@ -128,8 +96,11 @@ public class ParseHtmlLinks {
 		
 		this.setArrayPointerToLinkCurrentlyBeingParsed(0);
 
-		//this.urlsToParseOLD = new Hashtable<String, Integer>();
-		//this.urlsToParseOLD.put(urlToParse, new Integer(0));
+		// Build disallowed list from "robots.txt"
+		this.buildDisallowedList();
+
+		this.textForCrawlFile = "";
+		this.textForResultsFile = "";
 	}
 
 	// ******************************************************************************************
@@ -194,7 +165,22 @@ public class ParseHtmlLinks {
 	private int getArrayPointerToLinkCurrentlyBeingParsed() {
 		return arrayPointerToLinkCurrentlyBeingParsed;
 	}
-	
+
+	private void setTextForCrawlFile(String textForCrawlFile) {
+		this.textForCrawlFile = textForCrawlFile;
+	}
+
+	private String getTextForCrawlFile() {
+		return textForCrawlFile;
+	}
+	private void setTextForResultsFile(String textForResultsFile) {
+		this.textForResultsFile = textForResultsFile;
+	}
+
+	private String getTextForResultsFile() {
+		return textForResultsFile;
+	}
+
 	// ******************************************************************************************
 	// ** HELPER METHODS.                                                                      **
 	// ******************************************************************************************
@@ -374,10 +360,39 @@ public class ParseHtmlLinks {
 
 	}
 
+	public void buildDisallowedList() {
+		// Read "robots.txt" to fill arraylist of prohibited paths
+		try {
+			URL url = new URI(this.getBaseRelativeURL() + "robots.txt").toURL();
+			InputStream in = url.openStream();
+			Scanner s = new Scanner(in);
+
+			while (s.hasNextLine()) {
+				String test = s.nextLine();
+				if (test.contains("/")) {
+					test = test.substring(test.indexOf("/")+1);
+					this.disallowedURLs.add(this.getBaseRelativeURL() + test);
+				}
+			}
+
+		} catch (MalformedURLException e) {
+			e.printStackTrace();
+			System.out.println(e);
+			System.exit(1);
+		} catch (IOException e) {
+			System.out.println(e);
+			System.exit(1);
+		} catch (URISyntaxException e) {
+			System.out.println(e);
+			System.exit(1);
+		}
+	}
+
 	// Lists the links in the webpage.
 	public void listHtmlLinksFound() {
 		for (int i = 0; i < this.getHtmlLinksFound().size(); i++) {
 			System.out.println((i + 1) + ": " + this.getHtmlLinksFound().get(i));
+			this.setTextForCrawlFile(this.getTextForCrawlFile() + "    <" + this.getHtmlLinksFound().get(i) + ">" + System.getProperty("line.separator"));
 		}
 		System.out.println();
 	}
@@ -385,12 +400,27 @@ public class ParseHtmlLinks {
 	// Lists the visited pages and number of links to them within all parsed content
 	private void listVisitedPagesPerVisitedURL() {
 		for (int loopCounter = 0; loopCounter < this.visitedURLs.size(); loopCounter++) {
-			System.out.println("<" + this.visitedURLs.get(loopCounter) + ">");
-			System.out.println("    <No of links to Visited pages: " + this.visitedURLsVisitedPageCount.get(loopCounter) + ">");
+			//System.out.println("<" + this.visitedURLs.get(loopCounter) + ">");
+			//System.out.println("    <No of links to Visited pages: " + this.visitedURLsVisitedPageCount.get(loopCounter) + ">");
+			this.setTextForResultsFile(this.getTextForResultsFile() + "<" + (this.visitedURLs.get(loopCounter) + ">") + System.getProperty("line.separator"));
+			this.setTextForResultsFile(this.getTextForResultsFile() + "    <No of links to Visited pages: " + this.visitedURLsVisitedPageCount.get(loopCounter) + ">" + System.getProperty("line.separator"));
 		}
-		System.out.println();
+		//System.out.println(this.getTextForResultsFile());
+		
+		this.outputTextFile("results.txt", this.getTextForResultsFile());
 	}
 	
+	private void outputTextFile(String fileName, String textToOutput) {
+		try {
+			PrintWriter pwOutput = new PrintWriter(fileName);
+			pwOutput.println(textToOutput);
+			pwOutput.close();
+		} catch (FileNotFoundException e) {
+			System.out.println(e);
+			System.exit(1);
+		}
+	}
+
 	// Parses HTML links in the webpage.
 	public void parseHtmlLinks(String nextURL) {
 		try {
