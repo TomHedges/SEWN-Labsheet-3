@@ -1,6 +1,7 @@
 package code;
-// WRITTEN BY: Martin O'Shea.
+// MODIFIED BY: Tom Hedges
 
+// ORIGINALLY WRITTEN BY: Martin O'Shea - original available at "http://www.dcs.bbk.ac.uk/~martin/sewn/ls3/ParseHtmlLinks.java" (accessed 13/11/2013)
 // With thanks to: http://www.javaalmanac.com/egs/javax.swing.text.html/GetLinks.html.
 
 import java.io.FileNotFoundException;
@@ -23,7 +24,7 @@ import javax.swing.text.html.HTML;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 
-public class ParseHtmlLinks {
+public class ParseHtmlLinksExtended {
 
 	// ******************************************************************************************
 	// ** INSTANCE VARIABLES.                                                                  **
@@ -32,20 +33,15 @@ public class ParseHtmlLinks {
 	private String urlToParse;
 	private String baseRelativeURL;
 	private String currentRelativeURL;
-	private ArrayList<String> htmlLinksFound;
-
-	private ArrayList<String> visitedURLs;
-	private ArrayList<Integer> visitedURLsVisitedPageCount;
-	private ArrayList<String> disallowedURLs;
-	
-	private int arrayPointerToLinkCurrentlyBeingParsed;
-
 	private String textForCrawlFile;
 	private String textForResultsFile;
-	
+	private ArrayList<String> disallowedURLs;
+	private ArrayList<String> htmlLinksFound;
+	private ArrayList<String> urlsToVisit;
+	private ArrayList<Integer> visitedURLsVisitedPageCount;
+	private int arrayPointerToLinkCurrentlyBeingParsed;
+	// indicator for 'links' which should not be listed anywhere! (eg. 'mailto' links)
 	final static String urlToIgnore = "DO NOT USE THIS LINK FOR ANYTHING";
-
-	// private Hashtable<String, Integer> urlsToParseOLD;
 
 	// ******************************************************************************************
 	// ** PROGRAM.                                                                             **
@@ -53,9 +49,12 @@ public class ParseHtmlLinks {
 
 	public static void main(String args[]) {
 
-		String urlToParse = ("http://www.dcs.bbk.ac.uk/~martin/sewn/ls3/index.html");
-		ParseHtmlLinks phl = new ParseHtmlLinks(urlToParse);
+		/// *** HARDCODED SEED URL - please change this to direct crawler at different site
+		String urlToParse = ("http://www.dcs.bbk.ac.uk/~martin/sewn/ls3");
+		// Feed constructor seed URL
+		ParseHtmlLinksExtended phl = new ParseHtmlLinksExtended(urlToParse);
 
+		// Iterate through each link in list to visit, and output results to screen/variable to output text file
 		int loopCounter = 1;
 		do
 		{
@@ -69,10 +68,11 @@ public class ParseHtmlLinks {
 			phl.htmlLinksFound.clear(); //- NOT NECESSARY?
 			loopCounter++;
 		} while (phl.getUrlsToParseSize()>=loopCounter);
-		
 		System.out.println();
 
+		// output results of crawl to file in local directory
 		phl.outputTextFile("crawl.txt", phl.getTextForCrawlFile());
+		// list results (links visited and number of links on each to another visited page) 
 		phl.listVisitedPagesPerVisitedURL();
 	}
 
@@ -80,25 +80,26 @@ public class ParseHtmlLinks {
 	// ** CONSTRUCTOR.                                                                         **
 	// ******************************************************************************************
 
-	public ParseHtmlLinks(String urlToParse) {
+	public ParseHtmlLinksExtended(String urlToParse) {
 		this.urlToParse = urlToParse;
 		this.baseRelativeURL = parseURLToRelativeForm(urlToParse);
 		this.htmlLinksFound = new ArrayList<String>();
 		this.disallowedURLs = new ArrayList<String>();
 
 		// Use arraylists to store list of links to be visited and number of links to each
-		this.visitedURLs = new ArrayList<String>();
+		this.urlsToVisit = new ArrayList<String>();
 		this.visitedURLsVisitedPageCount = new ArrayList<Integer>();
 
 		// add initial link
-		this.visitedURLs.add(urlToParse);
+		this.urlsToVisit.add(urlToParse);
 		this.visitedURLsVisitedPageCount.add(0);
-		
+		// Set pointer for initial page (first)
 		this.setArrayPointerToLinkCurrentlyBeingParsed(0);
 
 		// Build disallowed list from "robots.txt"
 		this.buildDisallowedList();
 
+		// Set initial blank variables to be output as text files at the end of execution
 		this.textForCrawlFile = "";
 		this.textForResultsFile = "";
 	}
@@ -108,20 +109,10 @@ public class ParseHtmlLinks {
 	// ******************************************************************************************
 
 	public String getUrlToParse(int loopCounter) {
-
-		//int innerLoopCounter = 0;
-		//String nextURL = "";
-
-		//Enumeration<String> enumKey = urlsToParseOLD.keys();
-		//do {
-		//	innerLoopCounter++;
-		//    nextURL = enumKey.nextElement();
-		//} while (enumKey.hasMoreElements() && innerLoopCounter<loopCounter);
-
-		// Set pointer for which link i nthe "to parse" array is currently being looked at, so that links to be visited can be added to correct total
+		// Set pointer for which link in the "to parse" array is currently being looked at, so that links to be visited can be added to correct total
 		this.setArrayPointerToLinkCurrentlyBeingParsed(loopCounter-1);
-		
-		return this.visitedURLs.get(loopCounter-1);
+		// Return URL for parsing
+		return this.urlsToVisit.get(loopCounter-1);
 	}
 
 	public void setUrlToParse(String urlToParse) {
@@ -131,7 +122,6 @@ public class ParseHtmlLinks {
 	public void setBaseRelativeURL(String url) {
 		this.baseRelativeURL = parseURLToRelativeForm(url);
 	} 
-	
 	public String getBaseRelativeURL() {
 		return baseRelativeURL;
 	} 
@@ -145,8 +135,7 @@ public class ParseHtmlLinks {
 	}
 
 	public int getUrlsToParseSize() {
-		//return urlsToParseOLD.size();
-		return visitedURLs.size();
+		return urlsToVisit.size();
 	}
 
 	public ArrayList<String> getHtmlLinksFound() {
@@ -191,7 +180,6 @@ public class ParseHtmlLinks {
 		char[] charactersInURL;
 		charactersInURL = originalURL.toCharArray();
 		int loopCounter = charactersInURL.length-1;
-		boolean finishedChecks = false;
 		boolean dotEncountered = false;
 
 		do
@@ -201,22 +189,22 @@ public class ParseHtmlLinks {
 				// checks if last character in array is a slash
 				if (loopCounter == charactersInURL.length-1)
 				{
-					// then 'originalURL' is already base relative path
+					// if so, then 'originalURL' is already base relative path - so we are finished!
 					baseRelativeURL = originalURL;
-					finishedChecks = true;
+					return baseRelativeURL;
 				}
 
-				// if dot not yet encountered, then 'originalURL' was base relative path, just needing '/'
+				// if dot not yet encountered, then 'originalURL' was base relative path, just needing '/' adding to the end
 				if (!dotEncountered)
 				{
 					baseRelativeURL = originalURL + "/";
-					finishedChecks = true;
+					return baseRelativeURL;
 				}
 				else
 				{
-					//'originalURL' was a full filepath - so need to perform sum to get correct base URL
+					// as '.' was encountered before '/' in 'originalURL', it must have been a full filepath - so need to perform sum on character position to get correct base URL
 					baseRelativeURL = originalURL.substring(0, loopCounter+1);
-					finishedChecks = true;
+					return baseRelativeURL;
 				}
 			}
 
@@ -226,75 +214,49 @@ public class ParseHtmlLinks {
 			}
 
 			loopCounter--;
-		} while (loopCounter>0 && !finishedChecks);
+		} while (loopCounter>0);
 
+		// if URL is well formed, should never reach this return statement
 		return baseRelativeURL;
 	}
 
 	// Checks the format of a URL, and returns full version if it is relative
-	private String returnFullURL(String htmlLink) {
-		// OLD 1 - Check whether url has key component meaning it is full rather than relative (not absolute measure, but good enough for this exercise?)
-		//if (!htmlLink.toLowerCase().contains("://"))
-		//{
-		//	// if "url" has a colon, then it isn't really a URL! so make sure it isn't made realtive, and won't get parsed
-		//	if (!htmlLink.toLowerCase().contains(":")) {
-		//		htmlLink = this.getBaseRelativeURL() + htmlLink;
-		//	}
-		//}
-		
-		// NEW - Only return links beginning with 'http://' - so remove anything with other forms of link
+	private String returnAbsoluteURL(String htmlLink) {
+		// Only return links beginning with 'http://' or 'ftp://'- so ignore anything with other forms of link (eg. 'mailto:')
 		if (!htmlLink.toLowerCase().substring(0, 7).equals("http://")  && !htmlLink.toLowerCase().substring(0, 6).equals("ftp://") && htmlLink.toLowerCase().contains(":")) {
 			htmlLink = urlToIgnore;
 		} else {
 
-			// needs to be made absolute
+			// if link is not already absolute, then make it so
 			if (!htmlLink.toLowerCase().substring(0, 7).equals("http://") && !htmlLink.toLowerCase().substring(0, 6).equals("ftp://")) {
 				htmlLink = this.getCurrentRelativeURL() + htmlLink;
 			}
-			
-			
-			// PUT THESE LINES BACK IN (COMPLETED!)
-			// Some of these URLs contain ./ and ../ references, so we need to edit them out!
+			// where link contains an "up directory" link, parse through this to achieve correct absolute URL
 			while (htmlLink.contains("../")) {
 				int pointer = htmlLink.indexOf("../")-1;
 				String linkManipulator = htmlLink.substring(0, pointer);
 				linkManipulator = linkManipulator.substring(0, linkManipulator.lastIndexOf("/"));
 				htmlLink = linkManipulator + htmlLink.substring(pointer+3);
 			}
-			
-			//PUT THIS BACK IN ONCE THE ABOVE IS WORKING...
+			// remove this reference to the current parent directory for neatness as its use has no relevance to this exercise
 			htmlLink = htmlLink.replace("./", "");
-			
-			// OLD 2 - Only return links beginning with 'http://' - so remove
-			//if (!htmlLink.toLowerCase().substring(0, 7).equals("http://")) {
-			//	// if htmlLink has a colon, then it isn't a URL we want for this exercise! so make sure it isn't used for anything
-			//	if (htmlLink.toLowerCase().contains(":")) {
-			//		htmlLink = urlToIgnore;
-			//	} else {
-			//		
-			//		//PUT THIS BACK IN ONCE THE ABOVE IS WORKING...
-			//		htmlLink = htmlLink.replace("./", "");
-			//		htmlLink = this.getCurrentRelativeURL() + htmlLink;
-			//	}
-			//}
 		}
 
-		
 		return htmlLink;
 	}
 
-	// Adds a HTML link found in the webpage to collection htmlLinks. and adds/updates link in ArrayList urlsToParse
+	// Adds a HTML link found in the webpage to collection htmlLinks. also adds/updates link in ArrayList urlsToParse
 	public void addHtmlLinkFound(String htmlLink) {
-		// Get full html version of link
-		String fullURL = returnFullURL(htmlLink);
-		
-		// Check that found URL is within baseRelativeURL
+		// Get absolute URL
+		String fullURL = returnAbsoluteURL(htmlLink);
+		// Check that found URL is extension of seed URL, and not to be ignored
 		if (!(fullURL.equals(urlToIgnore)) && fullURL.length()>=baseRelativeURL.length() && fullURL.substring(0, baseRelativeURL.length()).equals(baseRelativeURL)) {
-			// Because this link is within the universe we are interested in, check whether it is DISALLOWED
+			// Because this link is an extension of seed, check whether it is disallowed by 'robots.txt' file
 			int disallowLoopCounter = 0;
 			boolean bDisallowed = false;
-			do
-			{
+			// iterate through each line of array holding the 'robots.txt' entries
+			do {
+				// ascertain shortest link, and compare that much of each string
 				int smallestLength = 0;
 				if (fullURL.length()<disallowedURLs.get(disallowLoopCounter).length())
 				{
@@ -304,7 +266,7 @@ public class ParseHtmlLinks {
 				{
 					smallestLength = disallowedURLs.get(disallowLoopCounter).length();
 				}
-				
+				// if there is a match, then this link is disallowed by 'robots.txt', so disallow it!
 				if (fullURL.substring(0, smallestLength).equals(disallowedURLs.get(disallowLoopCounter).substring(0, smallestLength))) {
 					bDisallowed = true;
 				}
@@ -312,69 +274,49 @@ public class ParseHtmlLinks {
 			} while ((disallowLoopCounter<disallowedURLs.size()) && (bDisallowed==false));
 
 			if (!bDisallowed) {
-				// Because this link is within the universe we are interested in, check whether it is in our arraylist
+				// Because this link is not disallowed, check it its already listed for visiting
 				int loopCounter = 0;
 				boolean bLinkFound = false;
-				do
-				{
-					if (fullURL.equals(visitedURLs.get(loopCounter))) {
+				do {
+					if (fullURL.equals(urlsToVisit.get(loopCounter))) {
 						bLinkFound = true;
-						
-						//This line was trackign links TO pages in the visited set, rather than FROM them
-						//visitedURLsVisitedPageCount.set(loopCounter,visitedURLsVisitedPageCount.get(loopCounter)+1);
 					}
 					loopCounter++;
-				} while ((loopCounter<visitedURLs.size()) && (bLinkFound==false));
+				} while ((loopCounter<urlsToVisit.size()) && (bLinkFound==false));
 
+				// if link was not found, then add it to the list for visiting, with 0 links from it
 				if (!bLinkFound) {
-					visitedURLs.add(fullURL);
+					urlsToVisit.add(fullURL);
 					visitedURLsVisitedPageCount.add(0);
-					
-					//This line was trackign links TO pages in the visited set, rather than FROM them
-					//visitedURLsVisitedPageCount.add(1);
 				}
 
-				// 
+				// as we have identified a link to new or known page to be visited, increase the counter for links from the current page
 				visitedURLsVisitedPageCount.set(getArrayPointerToLinkCurrentlyBeingParsed(),visitedURLsVisitedPageCount.get(getArrayPointerToLinkCurrentlyBeingParsed())+1);
-				
-				// this line superfluous, as all relevant links now added outside this loop??
-				// this.htmlLinksFound.add(fullURL);
 			}
 		}
-		
+		// if the fullURL is not to be ignored, then add it to the list of links for this page
 		if (!(fullURL.equals(urlToIgnore))){
 			// add url to list of links on this page
 			// Do nothing to list of urls to be parsed, as that is dealt with above
 			this.htmlLinksFound.add(fullURL);
 		}
-
-		// If URL is already in urlsToParse, update number of times found
-		//if (urlsToParseOLD.containsKey(fullURL)) {
-		//	urlsToParseOLD.put(fullURL, urlsToParseOLD.get(fullURL) + 1);
-		//}
-		// If URL is not in urlsToParse, then add with one link
-		//else {
-		//	this.htmlLinksFound.add(fullURL);
-		//	urlsToParseOLD.put(fullURL, 1);
-		//}
-
 	}
 
 	public void buildDisallowedList() {
 		// Read "robots.txt" to fill arraylist of prohibited paths
 		try {
 			URL url = new URI(this.getBaseRelativeURL() + "robots.txt").toURL();
-			InputStream in = url.openStream();
-			Scanner s = new Scanner(in);
+			InputStream isRobots = url.openStream();
+			Scanner scRobots = new Scanner(isRobots);
 
-			while (s.hasNextLine()) {
-				String test = s.nextLine();
-				if (test.contains("/")) {
-					test = test.substring(test.indexOf("/")+1);
-					this.disallowedURLs.add(this.getBaseRelativeURL() + test);
+			while (scRobots.hasNextLine()) {
+				String robotsLine = scRobots.nextLine();
+				// if this line of robots file contains a slash, then it is a disallowed path, so add to arraylist as absolute path (or beginning of)
+				if (robotsLine.contains("/")) {
+					robotsLine = robotsLine.substring(robotsLine.indexOf("/")+1);
+					this.disallowedURLs.add(this.getBaseRelativeURL() + robotsLine);
 				}
 			}
-
 		} catch (MalformedURLException e) {
 			e.printStackTrace();
 			System.out.println(e);
@@ -388,7 +330,7 @@ public class ParseHtmlLinks {
 		}
 	}
 
-	// Lists the links in the webpage.
+	// Print the list of pages found on page to screen, and continue building variable which will become text file
 	public void listHtmlLinksFound() {
 		for (int i = 0; i < this.getHtmlLinksFound().size(); i++) {
 			System.out.println((i + 1) + ": " + this.getHtmlLinksFound().get(i));
@@ -397,19 +339,15 @@ public class ParseHtmlLinks {
 		System.out.println();
 	}
 
-	// Lists the visited pages and number of links to them within all parsed content
+	// builds variable containing the list of visited pages and number of links from them to other visited pages. output to text file
 	private void listVisitedPagesPerVisitedURL() {
-		for (int loopCounter = 0; loopCounter < this.visitedURLs.size(); loopCounter++) {
-			//System.out.println("<" + this.visitedURLs.get(loopCounter) + ">");
-			//System.out.println("    <No of links to Visited pages: " + this.visitedURLsVisitedPageCount.get(loopCounter) + ">");
-			this.setTextForResultsFile(this.getTextForResultsFile() + "<" + (this.visitedURLs.get(loopCounter) + ">") + System.getProperty("line.separator"));
+		for (int loopCounter = 0; loopCounter < this.urlsToVisit.size(); loopCounter++) {
+			this.setTextForResultsFile(this.getTextForResultsFile() + "<" + (this.urlsToVisit.get(loopCounter) + ">") + System.getProperty("line.separator"));
 			this.setTextForResultsFile(this.getTextForResultsFile() + "    <No of links to Visited pages: " + this.visitedURLsVisitedPageCount.get(loopCounter) + ">" + System.getProperty("line.separator"));
 		}
-		//System.out.println(this.getTextForResultsFile());
-		
 		this.outputTextFile("results.txt", this.getTextForResultsFile());
 	}
-	
+	// output text file using given variables
 	private void outputTextFile(String fileName, String textToOutput) {
 		try {
 			PrintWriter pwOutput = new PrintWriter(fileName);
@@ -453,7 +391,7 @@ public class ParseHtmlLinks {
 			System.out.println(e);
 			System.exit(1);
 		}
-		// NB - currently will just fail if URL is not reachable
+		// Will just fail and exit if URL is not reachable
 		catch(IOException e) {
 			System.out.println(e);
 			System.exit(1);
